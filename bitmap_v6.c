@@ -71,6 +71,7 @@ int bitmapv6_insert_prefix(
     struct ip_v6 iptmp;
     void **i;
     int ret;
+    struct rollback_stash stash = {.stack = 0};
 
     for (;;) {
         iptmp = ip;
@@ -92,9 +93,9 @@ int bitmapv6_insert_prefix(
                 //update_inl_bitmap(node, pos);
                 //rules pos starting at 1, so add 1 to offset
                 //pos = count_ones(node->internal, pos) + 1;
-                ret = extend_rule(m, node, pos, level, nhi);
+                ret = extend_rule(m, node, pos, level, nhi, &stash);
                 if(ret == -1) {
-                    rollback_stash_rollback();
+                    rollback_stash_rollback(&stash);
                     return -1;
                 }
                 break;
@@ -116,9 +117,9 @@ int bitmapv6_insert_prefix(
                 //iteration
                 //child pos starting at 0, so add 0 to offset
                 //pos = count_ones(node->external, pos);
-                node = extend_child(m, node, level, pos);
+                node = extend_child(m, node, level, pos, &stash);
                 if(!node) {
-                    rollback_stash_rollback();
+                    rollback_stash_rollback(&stash);
                     return -1;
                 }
             }
@@ -129,7 +130,7 @@ int bitmapv6_insert_prefix(
         }
     }
 
-    rollback_stash_clear();
+    rollback_stash_clear(&stash);
     return 0;
 }
 
@@ -186,6 +187,7 @@ int bitmapv6_delete_prefix(struct mb_node *node, struct mm *m,
     struct trace trace_node[UPDATE_LEVEL_v6];
     int i = 0;
     int ret;
+    struct rollback_stash stash = {.stack = 0};
 
     for (;;) {
 
@@ -231,9 +233,9 @@ int bitmapv6_delete_prefix(struct mb_node *node, struct mm *m,
         i++;
     }
 
-    ret = update_nodes(m, trace_node, i);
+    ret = update_nodes(m, trace_node, i, &stash);
     if( ret != -1) {
-        rollback_stash_clear();
+        rollback_stash_clear(&stash);
     }
     return ret;
 }

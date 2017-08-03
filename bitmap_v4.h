@@ -2,8 +2,8 @@
 #define __BITMAP_v4_H__
 
 #include <stdint.h>
-#include "mb_node.h"
 #include "bitmap.h"
+#include "mb_node.h"
 #include "mm.h"
 
 #define LENGTH 32

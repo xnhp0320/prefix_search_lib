@@ -37,6 +37,32 @@ static inline uint32_t UP_CHILD(uint32_t x)
     return x;
 }
 
+#include "mm.h"
+struct mb_node_val {
+    struct mb_node *node;
+    struct mb_node old_val;
+    struct mm *m;
+    int level;
+};
+
+#if !defined(LEVEL)
+#define LEVEL MAX_LEVEL
+#define __USE_MAX_LEVEL_DEFINE__ 1
+#else
+#define __USE_MAX_LEVEL_DEFINE__ 0
+#endif
+
+struct rollback_stash 
+{
+    int stack;
+    struct mb_node_val val[LEVEL];
+};
+
+#if __USE_MAX_LEVEL_DEFINE__ 
+#undef LEVEL
+#endif
+
+
 
 static inline int count_ones(BITMAP_TYPE bitmap, uint8_t pos)
 {
@@ -90,18 +116,17 @@ static inline BITMAP_TYPE test_bitmap(BITMAP_TYPE bitmap, int pos)
 // |-------|--------|
 // to get the head of the memory : POINT(x) - UP_RULE(x)
 // 
-#include "mm.h"
 void *new_node(struct mm* mm, int mb_cnt, int result_cnt, int level);
 void free_node(struct mm *mm, void *ptr, uint32_t cnt, int level);
 
 struct mb_node * extend_child(struct mm *mm, struct mb_node *node,
-        int level, uint32_t pos);
+        int level, uint32_t pos, struct rollback_stash *stash);
 
 int extend_rule(struct mm *mm, struct mb_node *node, uint32_t pos,
-        int level, void *nhi);
-int reduce_child(struct mm *mm, struct mb_node *node, int pos, int level);
+        int level, void *nhi, struct rollback_stash *stash);
+int reduce_child(struct mm *mm, struct mb_node *node, int pos, int level, struct rollback_stash *stash);
 int reduce_rule(struct mm *mm, struct mb_node *node, uint32_t pos,
-        int level);
+        int level, struct rollback_stash *stash);
 
 //void mem_subtrie(struct mb_node *n, struct mem_stats *ms);
 int tree_function(BITMAP_TYPE bitmap, uint8_t stride);
@@ -173,21 +198,8 @@ static inline void dealloc_node(struct mm *m, int nb_node, int level, void *ptr)
     return free(ptr);
 }
 
-struct mb_node_val {
-    struct mb_node *node;
-    struct mb_node old_val;
-    struct mm *m;
-    int level;
-};
-
-struct rollback_stash 
-{
-    int stack;
-    struct mb_node_val val[MAX_LEVEL];
-};
-
-void rollback_stash_push(struct mb_node *node, struct mm *m, int level);
-void rollback_stash_rollback(void);
-void rollback_stash_clear(void);
+void rollback_stash_push(struct rollback_stash *stash, struct mb_node *node, struct mm *m, int level);
+void rollback_stash_rollback(struct rollback_stash *stash);
+void rollback_stash_clear(struct rollback_stash *stash);
 
 #endif

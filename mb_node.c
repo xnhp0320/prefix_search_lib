@@ -25,26 +25,26 @@ void free_node(struct mm *m, void *ptr, uint32_t cnt, int level)
     }
 }
 
-static __thread struct rollback_stash rb_stash;
-
-void rollback_stash_push(struct mb_node *node, struct mm *m, int level)
+void rollback_stash_push(struct rollback_stash *stash,
+                         struct mb_node *node, 
+                         struct mm *m, int level)
 {
-    assert(rb_stash.stack < MAX_LEVEL);
-    rb_stash.val[rb_stash.stack].node = node;
-    rb_stash.val[rb_stash.stack].old_val = *node;
-    rb_stash.val[rb_stash.stack].m = m;
-    rb_stash.val[rb_stash.stack].level = level;
-    rb_stash.stack ++;
+    assert(stash->stack < MAX_LEVEL);
+    stash->val[stash->stack].node = node;
+    stash->val[stash->stack].old_val = *node;
+    stash->val[stash->stack].m = m;
+    stash->val[stash->stack].level = level;
+    stash->stack ++;
 }
 
-void rollback_stash_rollback(void)
+void rollback_stash_rollback(struct rollback_stash *stash)
 {
     struct mb_node_val *val;
     int child_num;
     int rule_num;
 
-    for(rb_stash.stack--; rb_stash.stack >=0; rb_stash.stack --) {
-        val = rb_stash.val + rb_stash.stack; 
+    for(stash->stack--; stash->stack >=0; stash->stack --) {
+        val = stash->val + stash->stack; 
         if(val->node->child_ptr) {
             /*free the new child_ptr */
             child_num = count_children(val->node->external);
@@ -53,29 +53,29 @@ void rollback_stash_rollback(void)
         }
         *val->node = val->old_val; 
     }
-    rb_stash.stack = 0;
+    stash->stack = 0;
 }
 
-void rollback_stash_clear(void)
+void rollback_stash_clear(struct rollback_stash *stash)
 {
     struct mb_node_val *val;
     int child_num;
     int rule_num;
 
-    for(rb_stash.stack--; rb_stash.stack >=0; rb_stash.stack --) {
-        val = rb_stash.val + rb_stash.stack; 
+    for(stash->stack--; stash->stack >=0; stash->stack --) {
+        val = stash->val + stash->stack; 
         if(val->old_val.child_ptr){
             child_num = count_children(val->old_val.external);
             rule_num = count_children(val->old_val.internal);
             free_node(val->m, POINT(val->old_val.child_ptr) - UP_RULE(rule_num), UP_CHILD(child_num) + UP_RULE(rule_num), val->level);
         }
     }
-    rb_stash.stack = 0;
+    stash->stack = 0;
 }
 
 //pos start from 1
 //
-int extend_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level, void *nhi)
+int extend_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level, void *nhi, struct rollback_stash *stash)
 {
     int child_num = count_children(node->external);
     int rule_num = count_children(node->internal);
@@ -87,7 +87,7 @@ int extend_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level, voi
     if(!n)
         return -1;
 
-    rollback_stash_push(node, m, level);
+    rollback_stash_push(stash, node, m, level);
 
     update_inl_bitmap(node, pos);
     pos = count_ones(node->internal, pos) + 1; 
@@ -133,7 +133,7 @@ int extend_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level, voi
 //return the extended node
 //
 struct mb_node * extend_child(struct mm *m, struct mb_node *node, int level,
-        uint32_t pos)
+        uint32_t pos, struct rollback_stash *stash)
 {
     int child_num = count_children(node->external);
     int rule_num = count_children(node->internal);
@@ -142,7 +142,7 @@ struct mb_node * extend_child(struct mm *m, struct mb_node *node, int level,
     if(!n) 
         return NULL;
 
-    rollback_stash_push(node, m, level);
+    rollback_stash_push(stash, node, m, level);
     update_enl_bitmap(node, pos);
     pos = count_ones(node->external, pos);
     
@@ -175,7 +175,7 @@ struct mb_node * extend_child(struct mm *m, struct mb_node *node, int level,
     return (struct mb_node*)n + pos;
 }
 
-int reduce_child(struct mm *m, struct mb_node *node, int pos, int level)
+int reduce_child(struct mm *m, struct mb_node *node, int pos, int level, struct rollback_stash *stash)
 {
     int child_num = count_children(node->external);
     int rule_num = count_children(node->internal);
@@ -185,7 +185,7 @@ int reduce_child(struct mm *m, struct mb_node *node, int pos, int level)
     if(!n && child_num + rule_num > 1)
         return -1;
 
-    rollback_stash_push(node, m, level);
+    rollback_stash_push(stash, node, m, level);
     int clear_bit_idx = pos;
     pos = count_ones(node->external, pos);
     clear_bitmap(&node->external, clear_bit_idx);
@@ -217,7 +217,7 @@ int reduce_child(struct mm *m, struct mb_node *node, int pos, int level)
     return 0;
 }
 
-int reduce_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level)
+int reduce_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level, struct rollback_stash *stash)
 {
     int child_num = count_children(node->external);
     int rule_num = count_children(node->internal);
@@ -229,7 +229,7 @@ int reduce_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level)
     if(!n && rule_num + child_num > 1)
         return -1;
 
-    rollback_stash_push(node, m, level);
+    rollback_stash_push(stash, node, m, level);
     int clear_bit_idx = pos;
     pos = count_ones(node->internal, pos) + 1;
     clear_bitmap(&node->internal, clear_bit_idx);

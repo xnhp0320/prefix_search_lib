@@ -72,6 +72,7 @@ int bitmap_insert_prefix(
     uint8_t level = 0;
     void **i;
     int ret;
+    struct rollback_stash stash = {.stack = 0};
 
     for (;;) {
 
@@ -82,15 +83,15 @@ int bitmap_insert_prefix(
                 //already has the rule, need to update the rule
                 i = pointer_to_nhi(node, pos);
                 *i = nhi;
-                rollback_stash_clear();
+                rollback_stash_clear(&stash);
                 return 1;
             }
             else {
                 //update_inl_bitmap(node, pos);
                 //rules pos starting at 1, so add 1 to offset
-                ret = extend_rule(m, node, pos, level, nhi);
+                ret = extend_rule(m, node, pos, level, nhi, &stash);
                 if(ret == -1) {
-                    rollback_stash_rollback();
+                    rollback_stash_rollback(&stash);
                     return -1;
                 }
                 break;
@@ -106,9 +107,9 @@ int bitmap_insert_prefix(
             } 
             else {
                 //update_enl_bitmap(node, pos);
-                node = extend_child(m, node, level, pos);
+                node = extend_child(m, node, level, pos, &stash);
                 if(!node) {
-                    rollback_stash_rollback();
+                    rollback_stash_rollback(&stash);
                     return -1;
                 }
             }
@@ -118,7 +119,7 @@ int bitmap_insert_prefix(
         }
     }
 
-    rollback_stash_clear();
+    rollback_stash_clear(&stash);
     return 0;
 }
 
@@ -136,6 +137,7 @@ int bitmap_delete_prefix(struct mb_node *node, struct mm *m,
     struct trace trace_node[UPDATE_LEVEL];
     int i = 0;
     int ret;
+    struct rollback_stash stash = {.stack = 0};
 
     for (;;) {
 
@@ -169,9 +171,9 @@ int bitmap_delete_prefix(struct mb_node *node, struct mm *m,
         i++;
     }
 
-    ret = update_nodes(m, trace_node, i);
+    ret = update_nodes(m, trace_node, i, &stash);
     if(ret != -1) {
-        rollback_stash_clear();
+        rollback_stash_clear(&stash);
     }
     return ret;
 }

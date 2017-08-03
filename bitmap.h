@@ -22,7 +22,7 @@ struct lazy_travel {
     uint32_t stride;
 };
 
-int update_nodes(struct mm *mm, struct trace *t, int total);
+int update_nodes(struct mm *mm, struct trace *t, int total, struct rollback_stash *stash);
 typedef int (*traverse_func) (struct mb_node *node, 
         uint8_t stride, uint8_t pos, uint8_t type, void *data);
 

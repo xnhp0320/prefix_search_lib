@@ -17,7 +17,7 @@ int prefix_exist_func(struct mb_node *node,
     return TRAVERSE_CONT;
 }
 
-int update_nodes(struct mm *mm, struct trace *t, int total)
+int update_nodes(struct mm *mm, struct trace *t, int total, struct rollback_stash *stash)
 {
     int i;
     int node_need_to_del = 0;
@@ -25,9 +25,9 @@ int update_nodes(struct mm *mm, struct trace *t, int total)
     for(i=total;i >= 0;i--){
         if(i==total){
 
-            ret = reduce_rule(mm, t[i].node, t[i].pos, i);
+            ret = reduce_rule(mm, t[i].node, t[i].pos, i, stash);
             if(ret == -1) {
-                rollback_stash_rollback();
+                rollback_stash_rollback(stash);
                 return -1;
             }
 
@@ -38,9 +38,9 @@ int update_nodes(struct mm *mm, struct trace *t, int total)
         }
         else{
             if(node_need_to_del){
-                ret = reduce_child(mm, t[i].node, t[i].pos, i);
+                ret = reduce_child(mm, t[i].node, t[i].pos, i, stash);
                 if(ret == -1) {
-                    rollback_stash_rollback();
+                    rollback_stash_rollback(stash);
                     return -1;
                 }
             }
