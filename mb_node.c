@@ -40,8 +40,17 @@ void rollback_stash_push(struct mb_node *node, struct mm *m, int level)
 void rollback_stash_rollback(void)
 {
     struct mb_node_val *val;
+    int child_num;
+    int rule_num;
+
     for(rb_stash.stack--; rb_stash.stack >=0; rb_stash.stack --) {
         val = rb_stash.val + rb_stash.stack; 
+        if(val->node->child_ptr) {
+            /*free the new child_ptr */
+            child_num = count_children(val->node->external);
+            rule_num  = count_children(val->node->internal);
+            free_node(val->m, POINT(val->node->child_ptr) - UP_RULE(rule_num), UP_CHILD(child_num) + UP_RULE(rule_num), val->level);
+        }
         *val->node = val->old_val; 
     }
     rb_stash.stack = 0;
@@ -173,7 +182,7 @@ int reduce_child(struct mm *m, struct mb_node *node, int pos, int level)
 
     assert(child_num >= 1); 
     void *n = new_node(m, child_num -1 ,rule_num, level);
-    if(!n)
+    if(!n && child_num + rule_num > 1)
         return -1;
 
     rollback_stash_push(node, m, level);
@@ -217,7 +226,7 @@ int reduce_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level)
     void **j;
 
     void *n = new_node(m, child_num, rule_num - 1, level);
-    if(!n)
+    if(!n && rule_num + child_num > 1)
         return -1;
 
     rollback_stash_push(node, m, level);

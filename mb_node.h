@@ -165,7 +165,7 @@ void destroy_subtrie(struct mb_node *node, struct mm *m, void (*destroy_nhi)(voi
 
 static inline void *alloc_node(struct mm *m, int nb_node, int level)
 {
-    return calloc(nb_node, NODE_SIZE);
+        return calloc(nb_node, NODE_SIZE);
 }
 
 static inline void dealloc_node(struct mm *m, int nb_node, int level, void *ptr)
