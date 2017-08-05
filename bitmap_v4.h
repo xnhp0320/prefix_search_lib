@@ -58,4 +58,5 @@ void bitmap_mb_node_iter(struct mb_node *node, uint32_t ip, uint32_t left_bits,
 void bitmap_redund_rule(struct mb_node *node, uint32_t ip, uint32_t left_bits, 
         uint32_t cur_cidr, uint32_t *redund_rule);
 
+int bitmap_compact(struct mb_node *root, struct mm *m, struct mb_node **compact);
 #endif

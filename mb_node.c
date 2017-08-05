@@ -391,3 +391,28 @@ void destroy_subtrie(struct mb_node *node, struct mm *m, void (*destroy_nhi)(voi
     free_node(m, first, UP_RULE(cnt_rules) + UP_CHILD(cnt_children), depth);
 }
 
+
+void show_mm_stat(struct mm *m) 
+{
+    int i; 
+
+    printf("Total memory %dB %.2fKB %.2fMB\n",
+            m->ms.mem, (double)(m->ms.mem)/1024.0,
+            (double)(m->ms.mem)/(1024*1024.0));
+
+    printf("Total nodes %d\n",
+            m->ms.node);
+
+    for(i = 0; i < MAX_LEVEL; i++ ) {
+        if(m->ms.lmem[i] != 0) {
+            printf("level %d with memory %dB %.2fKB %.2fMB\n",
+                    i, m->ms.lmem[i], (double)(m->ms.lmem[i])/1024.0,
+                    (double)(m->ms.lmem[i])/(1024*1024.0));
+            printf("level %d with nodes %d\n",
+                    i, m->ms.lnode[i]);
+        }
+        else
+            break;
+    }
+}
+

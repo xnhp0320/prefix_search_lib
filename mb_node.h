@@ -190,11 +190,19 @@ void destroy_subtrie(struct mb_node *node, struct mm *m, void (*destroy_nhi)(voi
 
 static inline void *alloc_node(struct mm *m, int nb_node, int level)
 {
-        return calloc(nb_node, NODE_SIZE);
+    m->ms.mem += nb_node * NODE_SIZE;
+    m->ms.node += nb_node;
+    m->ms.lmem[level] += nb_node * NODE_SIZE;
+    m->ms.lnode[level] += nb_node;
+    return calloc(nb_node, NODE_SIZE);
 }
 
 static inline void dealloc_node(struct mm *m, int nb_node, int level, void *ptr)
 {
+    m->ms.mem -= nb_node * NODE_SIZE;
+    m->ms.node -= nb_node;
+    m->ms.lmem[level] -= nb_node * NODE_SIZE;
+    m->ms.lnode[level] -= nb_node;
     return free(ptr);
 }
 
@@ -202,4 +210,5 @@ void rollback_stash_push(struct rollback_stash *stash, struct mb_node *node, str
 void rollback_stash_rollback(struct rollback_stash *stash);
 void rollback_stash_clear(struct rollback_stash *stash);
 
+void show_mm_stat(struct mm *m);
 #endif

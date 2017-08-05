@@ -467,4 +467,81 @@ void bitmap_print_all_prefix(struct mb_node *root,
     bitmap_mb_node_iter(root, 0, LENGTH, 0, print_with_func, print_next_hop); 
 }
 
+static struct mb_node *copy_parent(struct mb_node **dst, struct mb_node *n)
+{
+    struct mb_node *copy;
+    **dst = *n;
+    copy = *dst;
+    *dst = *dst + 1;
+    return copy; 
+}
 
+
+static struct mb_node* copy_children(struct mb_node **dst, struct mb_node *n)
+{
+    struct mb_node *first_child;
+
+    int child_num = count_children(n->external);
+    int rule_num = count_children(n->internal);
+    struct mb_node *first = POINT(n->child_ptr) - UP_RULE(rule_num);
+    memcpy(*dst, first, (child_num + rule_num) * NODE_SIZE);
+    first_child = *dst + UP_RULE(rule_num);
+    *dst = *dst + (child_num + rule_num);
+    return first_child; 
+}
+
+
+int bitmap_compact(struct mb_node *root, struct mm *m, struct mb_node **compact)
+{
+    aux_queue_t q;
+    struct mb_node *out = NULL;
+    int i;
+
+    int max_node = 0;
+    for (i = 0; i < MAX_LEVEL; i ++) {
+        if(m->ms.lnode[i] == 0)
+            break;
+        if(m->ms.lnode[i] > max_node)
+            max_node = m->ms.lnode[i];
+    }
+
+    if(aux_queue_init(&q, max_node) < 0) {
+        return -1;
+    }
+
+    out = (struct mb_node *)calloc(sizeof(struct mb_node), m->ms.node);
+    if(!out) {
+        aux_queue_dctor(&q);
+        return -1;
+    }
+
+    struct mb_node *curr = out;
+    struct mb_node *first_child;
+
+    aux_elem_t aux;
+    aux_elem_t *top;
+
+    /* push the first elem */
+    aux.n = copy_parent(&curr, root);
+    aux.len = count_children((aux.n)->external);
+    aux_queue_put(&q, &aux);
+    
+    while(!aux_queue_len(&q)) { 
+        aux_queue_get(&q, &top);
+
+        first_child = copy_children(&curr, top->n);
+        top->n->child_ptr = first_child;
+
+        int i;
+        for(i = 0; i < top->len; i ++) {
+            aux.n = first_child + i;
+            aux.len = count_children(aux.n->external); 
+            aux_queue_put(&q, &aux);
+        }
+    }
+
+    *compact = out;
+    aux_queue_dctor(&q);
+
+    return 0;
+}

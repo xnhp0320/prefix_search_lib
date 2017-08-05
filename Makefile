@@ -25,8 +25,6 @@ all:$(OBJ)
 $(OBJ):$(SOURCE_DEP)
 	$(AR) rvs $@ $^  
 
-test:$(TEST)
-
 $(TEST):$(SOURCE_DEP)
 	$(CC) $(CPPFLAGS)  $^ -o $@ $(LDFLAGS)
 
