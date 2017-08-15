@@ -11,7 +11,8 @@
 void bitmap_destroy_trie(struct mb_node *root,
         struct mm *m, void (*destroy_nhi)(void *nhi))
 {
-    destroy_subtrie(root, m, destroy_nhi, 0);
+    if(root->child_ptr)
+        destroy_subtrie(root, m, destroy_nhi, 0);
 }
 
 
