@@ -194,6 +194,8 @@ static inline void *alloc_node(struct mm *m, int nb_node, int level)
     m->ms.node += nb_node;
     m->ms.lmem[level] += nb_node * NODE_SIZE;
     m->ms.lnode[level] += nb_node;
+    if(nb_node == 0)
+        return NULL;
     return calloc(nb_node, NODE_SIZE);
 }
 
