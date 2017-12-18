@@ -1,6 +1,30 @@
 #include <stdio.h>
 #include "mb_node.h"
 
+void * __attribute__((weak)) alloc_node(struct mm *m, int nb_node, int level)
+{
+    if(nb_node == 0)
+        return NULL;
+
+    void *ret = calloc(nb_node, NODE_SIZE);
+    if(ret) {
+        m->ms.mem += nb_node * NODE_SIZE;
+        m->ms.node += nb_node;
+        m->ms.lmem[level] += nb_node * NODE_SIZE;
+        m->ms.lnode[level] += nb_node;
+    }
+    return ret;
+}
+
+void __attribute__((weak)) dealloc_node(struct mm *m, int nb_node, int level, void *ptr)
+{
+    m->ms.mem -= nb_node * NODE_SIZE;
+    m->ms.node -= nb_node;
+    m->ms.lmem[level] -= nb_node * NODE_SIZE;
+    m->ms.lnode[level] -= nb_node;
+    return free(ptr);
+}
+
 
 void * new_node(struct mm* m, int mb_cnt, int nh_cnt, int level)
 {
