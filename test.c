@@ -262,6 +262,144 @@ void test_lookup_valid_batch(struct mb_node *root)
 }
 #endif
 
+struct ip_prefix {
+    uint32_t ip;
+    int cidr;
+}; 
+
+int compare(const void *a, const void *b)
+{
+    const struct ip_prefix *p1 = (const struct ip_prefix *)a;
+    const struct ip_prefix *p2 = (const struct ip_prefix *)b;
+
+    if(p1->cidr != p2->cidr) {
+        return p2->cidr - p1->cidr;
+    }
+    else {
+        if(p1->ip < p2->ip) return -1;
+        if(p1->ip > p2->ip) return 1;
+    }
+    return 0;
+}
+
+int lower_bound(struct ip_prefix *ipp, uint32_t ip, int i, int j)
+{
+    int s;
+    int count, step;
+    count = j - i + 1;
+
+    while(count > 0) {
+        s = i;
+        step = count / 2;
+        s += step;
+        if (ipp[s].ip < ip) {
+            i = ++s;
+            count -= step +1;
+        } else 
+            count = step;
+    }
+    return s;
+}
+
+int binary_search(struct ip_prefix *ipp, uint32_t ip, int i, int j)
+{
+    int s = lower_bound(ipp, ip, i, j);
+    if (s == j+1) return -1;
+    if (ipp[s].ip > ip) return -1; 
+    return s;
+}
+
+int b_search(struct ip_prefix *ipp, uint32_t ip, int *i, int *j)
+{
+    int k = 32;
+    int r1;
+    for(; k >= 0; k --) {
+        if(i[k] == -1) continue;
+        r1 = binary_search(ipp, (ip >> (32-k))<<(32-k), i[k], j[k]);
+        if(r1 != -1) return r1 + 1;
+    }
+    return (r1 == -1) ? 0 : r1 +1;
+}
+
+void test_lookup_valid_greedy(void)
+{
+    struct mb_node root = {0,0,NULL};
+    struct mm m;
+    memset(&m, 0, sizeof(m));
+
+    FILE *fp = fopen("ipv4_fib","r");
+    if (fp == NULL)
+        exit(-1);
+
+    int i = 0;
+
+    char *line = NULL;
+    ssize_t read = 0;
+    size_t len = 0;
+
+    struct ip_prefix *ipp = (struct ip_prefix *)malloc(1000000 * sizeof(struct ip_prefix));
+    uint32_t ip;
+    int cidr;
+    
+    int pi[33];
+    int pj[33];
+
+    while((read = getline(&line, &len, fp)) != -1){
+        if (i & 0x01) {
+            cidr = atoi(line);
+            ip = ip & (0xffffffff << (32-cidr));
+            ipp[i/2].ip = ip;
+            ipp[i/2].cidr = cidr;
+        }
+        else {
+            //printf("line %s", line);
+            ip = inet_network(line);
+        }
+        i++;
+    }
+
+    qsort(ipp, i/2, sizeof(struct ip_prefix), compare);
+
+    int j;
+    for(j = 0; j < 33; j ++) {
+	pi[j] = pj[j] = -1;
+    }
+
+    int curr = ipp[0].cidr;
+    pi[curr]= 0;
+
+    for(j = 1; j < i/2; j++) {
+        if(ipp[j].cidr < curr) {
+            pj[curr] = j -1;
+            curr = ipp[j].cidr;
+            pi[curr] = j;
+        }
+    }
+    pj[curr] = j -1;
+
+    for(j = 0; j < i/2 ; j++) {
+        bitmap_insert_prefix(&root, &m, ipp[j].ip, ipp[j].cidr, (void*)(unsigned long)(j+1));
+    }
+
+    int r1, r2;
+    unsigned int k;
+
+    printf("Test greedy \n");
+    
+    for(k = 0; k < UINT32_MAX; k ++) {
+	if(k == 0x1010100) 
+	    printf("here\n");
+        r1 = b_search(ipp, k, pi, pj); 
+        r2 = (int)(unsigned long)bitmap_do_search(&root, k);
+        if(r1 != r2) {
+            printf("r1 %d r2 %d ip %x \n", r1, r2, k);
+            printf("prefix for r1 ip %x cidr %d\n", ipp[r1-1].ip, ipp[r1-1].cidr);
+            printf("prefix for r2 ip %x cidr %d\n", ipp[r2-1].ip, ipp[r2-1].cidr);
+        }
+        if(k % (100000) == 0) {printf("."); fflush(stdout);}
+    }
+}
+
 void test_lookup_valid(struct mb_node *root) 
 {
     FILE *fp = fopen("ipv4_fib","r");
@@ -412,6 +550,7 @@ void ipv4_test()
     bitmap_compact(&root, &m, &croot);
 
     test_lookup_valid(croot);
+    test_lookup_valid_greedy();
     test_lookup_valid_batch(croot);
     test_random_ips(croot);
 
