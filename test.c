@@ -140,6 +140,83 @@ int del_routes(struct mb_node *root, struct mm *m, FILE *fp)
 
 }
 
+int load_routes_rcu(struct mb_node **root, struct mm *m, FILE *fp)
+{
+    int i = 0;
+    char *line = NULL;
+    ssize_t read = 0;
+    size_t len = 0;
+    
+    uint32_t ip = 0;
+    uint32_t cidr;
+    uint64_t key = 1;
+    struct copy_stash stash;
+
+    while((read = getline(&line, &len, fp)) != -1){
+        if (i & 0x01) {
+
+            cidr = atoi(line);
+            ip = ip & (0xffffffff << (32-cidr));
+            bitmap_insert_prefix_read_copy(*root, m, ip, cidr,(void*)(key), &stash);
+            key ++;
+            *root = stash.nodes[0].new_node;
+            bitmap_rcu_after_update(&stash);
+        }
+        else {
+            ip = inet_network(line);
+        }
+        
+        i++;
+
+    }
+    printf("load routes %d\n", i/2 );
+    return i/2 ;
+}
+
+int del_routes_rcu(struct mb_node **root, struct mm *m, FILE *fp)
+{
+    int i = 0;
+    char *line = NULL;
+    ssize_t read = 0;
+    size_t len = 0;
+    
+    uint32_t ip = 0;
+    uint32_t cidr;
+    char buf[128];
+
+    rewind(fp);
+    struct copy_stash stash;
+
+    while((read = getline(&line, &len, fp)) != -1){
+        if (i & 0x01) {
+
+            cidr = atoi(line);
+            ip = ip & (0xffffffff << (32-cidr));
+
+            if (bitmap_prefix_exist(*root, ip, cidr)){
+                bitmap_delete_prefix_read_copy(*root, m, ip, cidr, NULL, &stash);
+                *root = stash.nodes[0].new_node;
+                bitmap_rcu_after_update(&stash);
+            }
+            
+            if (bitmap_prefix_exist(*root, ip, cidr)){
+                printf("prefix exist ! error\n");
+            }
+        }
+        else {
+            ip = inet_network(line);
+            strcpy(buf, line);
+        }
+        
+        i++;
+
+    }
+    printf("del routes %d\n", i/2 );
+    show_mm_stat(m);
+    
+    return i/2 ;
+}
+
 int load_routes(struct mb_node *root, struct mm *m, FILE *fp)
 {
     int i = 0;
@@ -530,6 +607,24 @@ void test_random_ips(struct mb_node *root)
 
 }
 
+void ipv4_test_rcu()
+{
+    FILE *fp = fopen("ipv4_fib","r");
+    if (fp == NULL)
+        exit(-1);
+    struct mm m;
+    memset(&m, 0, sizeof(m));
+    printf("\nBegin RCU Test\n");
+
+    struct mb_node *root = calloc(1, sizeof(struct mb_node));
+    load_routes_rcu(&root, &m, fp);
+    show_mm_stat(&m);
+    test_lookup_valid(root);
+    del_routes_rcu(&root, &m, fp);
+     
+}
+
+
 
 void ipv4_test()
 {
@@ -550,7 +645,7 @@ void ipv4_test()
     bitmap_compact(&root, &m, &croot);
 
     test_lookup_valid(croot);
-    test_lookup_valid_greedy();
+    //test_lookup_valid_greedy();
     test_lookup_valid_batch(croot);
     test_random_ips(croot);
 
@@ -743,6 +838,7 @@ void ipv6_test()
 int main()
 {
     ipv4_test();
+    ipv4_test_rcu();
     ipv6_test();
     return 0;
 }

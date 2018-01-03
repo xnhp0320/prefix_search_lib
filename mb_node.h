@@ -45,6 +45,17 @@ struct mb_node_val {
     int level;
 };
 
+/* used for copy a part of tree that is involved 
+ * in a single update (insert/delete)
+ */
+struct copy_node {
+    struct mb_node *new_first;
+    struct mb_node *old_first;
+    struct mb_node *new_node;
+    int nb_node;
+    int level;
+};
+
 #if !defined(LEVEL)
 #define LEVEL MAX_LEVEL
 #define __USE_MAX_LEVEL_DEFINE__ 1
@@ -56,6 +67,13 @@ struct rollback_stash
 {
     int stack;
     struct mb_node_val val[LEVEL];
+};
+
+struct copy_stash
+{
+    int stack;
+    struct mm *m;
+    struct copy_node nodes[LEVEL];
 };
 
 #if __USE_MAX_LEVEL_DEFINE__ 
@@ -81,6 +99,12 @@ static inline int count_children(BITMAP_TYPE bitmap)
 #else
     return __builtin_popcountll(bitmap);
 #endif
+}
+
+static inline int rulenum_offset(struct mb_node *n)
+{
+    int rule_num = count_children(n->internal);
+    return UP_RULE(rule_num);
 }
 
 static inline uint32_t count_inl_bitmap(uint32_t bit, int cidr)
@@ -191,6 +215,19 @@ void destroy_subtrie(struct mb_node *node, struct mm *m, void (*destroy_nhi)(voi
 void rollback_stash_push(struct rollback_stash *stash, struct mb_node *node, struct mm *m, int level);
 void rollback_stash_rollback(struct rollback_stash *stash);
 void rollback_stash_clear(struct rollback_stash *stash);
-
+struct mb_node *mb_copy_node(struct mb_node *n, struct mm *m, int level);
 void show_mm_stat(struct mm *m);
+
+void copy_stash_init(struct copy_stash *stash, struct mm *m);
+void copy_stash_push(struct copy_stash *stash, \
+                    struct mb_node *old, struct mb_node *new, \
+                    struct mb_node *new_node, \
+                    int nb_node, \
+                    int level);
+
+int copy_stash_copy_root(struct copy_stash *stash, struct mb_node *node, int level);
+int copy_stash_copy_children(struct copy_stash *stash, struct mb_node *node, int offset, int level);
+void copy_stash_free_new(struct copy_stash *stash);
+void copy_stash_free_old(struct copy_stash *stash);
+
 #endif

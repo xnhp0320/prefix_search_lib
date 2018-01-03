@@ -55,8 +55,18 @@ void bitmap_mb_node_iter(struct mb_node *node, uint32_t ip, uint32_t left_bits,
                          uint32_t cur_cidr, void (*trie_traverse_func)(uint32_t ip, uint32_t cidr, void *nhi, void *user),
                          void *userdata);
 
-void bitmap_redund_rule(struct mb_node *node, uint32_t ip, uint32_t left_bits, 
-        uint32_t cur_cidr, uint32_t *redund_rule);
-
 int bitmap_compact(struct mb_node *root, struct mm *m, struct mb_node **compact);
+
+int bitmap_copy_branch(struct mb_node *node, 
+        struct mm *m, 
+        uint32_t ip, int cidr, struct copy_stash *stash);
+int bitmap_insert_prefix_read_copy(struct mb_node *root,
+        struct mm *m, uint32_t ip, int cidr, void *nhi, 
+        struct copy_stash *stash);
+int bitmap_delete_prefix_read_copy(struct mb_node *root, 
+        struct mm *m, uint32_t ip, int cidr, \
+        void (*destroy_nhi)(void *nhi), \
+        struct copy_stash *stash);
+void bitmap_rcu_after_update(struct copy_stash *stash);
+
 #endif

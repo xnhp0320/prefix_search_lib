@@ -97,6 +97,80 @@ void rollback_stash_clear(struct rollback_stash *stash)
     stash->stack = 0;
 }
 
+struct mb_node *mb_copy_node(struct mb_node *n, struct mm *m, int level)
+{
+    struct mb_node *copy = alloc_node(m, 1, level);
+    if(!copy)
+        return NULL;
+    memcpy(copy, n, sizeof(*n));
+    return copy;
+}
+
+void copy_stash_init(struct copy_stash *stash, struct mm *m)
+{
+    stash->stack = 0;
+    stash->m = m;
+}
+
+void copy_stash_push(struct copy_stash *stash, \
+                    struct mb_node *old, struct mb_node *new, \
+                    struct mb_node *new_node, \
+                    int nb_node, \
+                    int level)
+{
+    stash->nodes[stash->stack].new_first = new;
+    stash->nodes[stash->stack].old_first = old;
+    stash->nodes[stash->stack].new_node = new_node;
+    stash->nodes[stash->stack].nb_node = nb_node;
+    stash->nodes[stash->stack].level = level;
+    stash->stack++;
+}
+
+int copy_stash_copy_root(struct copy_stash *stash, struct mb_node *node, int level) {
+    struct mb_node *copy = mb_copy_node(node, stash->m, level);
+    if(!copy)
+        return -1;
+    copy_stash_push(stash, node, copy, copy, 1, level); 
+    return 0;
+}
+
+int copy_stash_copy_children(struct copy_stash *stash, struct mb_node *node, int offset, int level)
+{
+    int childnum = count_children(node->external);
+    int rulenum = count_children(node->internal);
+    int nb_node = UP_RULE(rulenum) + UP_CHILD(childnum);
+
+    struct mb_node *copy = alloc_node(stash->m, nb_node, level);
+    if(!copy && nb_node != 0)
+        return -1;
+
+    struct mb_node *first = POINT(node->child_ptr) - UP_RULE(rulenum);
+    memcpy(copy, first, nb_node * NODE_SIZE);
+
+    struct mb_node *this_begin = copy + UP_RULE(rulenum);
+    (stash->nodes[stash->stack -1].new_node)->child_ptr = this_begin;
+    copy_stash_push(stash, first, copy, this_begin + offset, nb_node, level);
+    return 0;
+}
+
+void copy_stash_free_new(struct copy_stash *stash)
+{
+    for(stash->stack --; stash->stack >= 0; stash->stack --) {
+        dealloc_node(stash->m, stash->nodes[stash->stack].nb_node, \
+                stash->nodes[stash->stack].level, \
+                stash->nodes[stash->stack].new_first);
+    }
+}
+
+void copy_stash_free_old(struct copy_stash *stash)
+{
+    for(stash->stack --; stash->stack >= 0; stash->stack --) {
+        dealloc_node(stash->m, stash->nodes[stash->stack].nb_node, \
+                stash->nodes[stash->stack].level, \
+                stash->nodes[stash->stack].old_first);
+    }
+}
+
 //pos start from 1
 //
 int extend_rule(struct mm *m, struct mb_node *node, uint32_t pos, int level, void *nhi, struct rollback_stash *stash)

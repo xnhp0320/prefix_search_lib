@@ -485,9 +485,9 @@ static struct mb_node* copy_children(struct mb_node **dst, struct mb_node *n)
     int child_num = count_children(n->external);
     int rule_num = count_children(n->internal);
     struct mb_node *first = POINT(n->child_ptr) - UP_RULE(rule_num);
-    memcpy(*dst, first, (child_num + rule_num) * NODE_SIZE);
+    memcpy(*dst, first, (UP_CHILD(child_num) + UP_RULE(rule_num)) * NODE_SIZE);
     first_child = *dst + UP_RULE(rule_num);
-    *dst = *dst + (child_num + rule_num);
+    *dst = *dst + (UP_CHILD(child_num) + UP_RULE(rule_num));
     return first_child; 
 }
 
@@ -546,3 +546,114 @@ int bitmap_compact(struct mb_node *root, struct mm *m, struct mb_node **compact)
 
     return 0;
 }
+
+/* follow ip/cidr to copy involved part of
+ * the tree
+ */
+
+int bitmap_copy_branch(struct mb_node *node, 
+        struct mm *m, 
+        uint32_t ip, int cidr, struct copy_stash *stash)
+
+{
+    uint8_t pos;
+    uint8_t stride;
+    uint8_t level = 0;
+    int offset = 0;
+    int ret = 0;
+
+    copy_stash_init(stash, m);
+    ret = copy_stash_copy_root(stash, node, level);
+    if(ret < 0)
+        return ret;
+
+    for (;;) {
+        if (unlikely(cidr < STRIDE)) {
+            /* the last offset is useless */
+            ret = copy_stash_copy_children(stash, node, 0, level); 
+            break;
+        } else {
+            //push the "cidr == stride" node into the next child
+            stride = ip >> (LENGTH - STRIDE);
+            pos = count_enl_bitmap(stride);
+
+            if (test_bitmap(node->external, pos)) {
+                offset = count_ones(node->external, pos);
+                ret = copy_stash_copy_children(stash, node, offset, level);
+                if(ret < 0)
+                    break;
+                node = next_child(node, pos);
+            } else {
+                break;
+            }
+            cidr -= STRIDE;
+            ip <<= STRIDE;
+            level ++;
+        }
+    }
+
+    if(ret < 0) {
+        copy_stash_free_new(stash);
+        return ret;
+    }
+
+    return ret;
+}
+
+/* first copy the branch that will be updated,
+ * then use the normal insert/delete function 
+ * to update the copied part
+ *
+ * after finish the update, switch the root
+ * pointer then free the old branch.
+ */
+
+int bitmap_insert_prefix_read_copy(struct mb_node *root,
+        struct mm *m, uint32_t ip, int cidr, void *nhi, 
+        struct copy_stash *stash)
+{
+    int ret;
+    ret = bitmap_copy_branch(root, m, ip, cidr, stash);
+    if(ret < 0)
+        return ret;
+
+    struct mb_node *new_root = stash->nodes[0].new_node;
+    ret = bitmap_insert_prefix(new_root, m, ip, cidr, nhi);
+    if(ret < 0) {
+        copy_stash_free_new(stash);
+        return ret;
+    }
+
+    return 0;
+}
+
+int bitmap_delete_prefix_read_copy(struct mb_node *root, 
+        struct mm *m, uint32_t ip, int cidr, \
+        void (*destroy_nhi)(void *nhi), \
+        struct copy_stash *stash)
+{
+    int ret;
+    ret = bitmap_copy_branch(root, m, ip, cidr, stash);
+    if(ret < 0)
+        return ret;
+
+    struct mb_node *new_root = stash->nodes[0].new_node;
+    ret = bitmap_delete_prefix(new_root, m, ip, cidr, destroy_nhi);
+    if(ret < 0) {
+        copy_stash_free_new(stash);
+        return ret;
+    }
+
+    return 0;
+}
+
+void bitmap_rcu_after_update(struct copy_stash *stash)
+{
+    copy_stash_free_old(stash);
+}
+
+
+
+
+
+
