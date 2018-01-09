@@ -39,4 +39,5 @@ clean:
 	rm -f *.o 
 	rm -f $(OBJ) 
 	rm -f $(TEST)
+	rm -f rollback
 	

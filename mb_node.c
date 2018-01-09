@@ -480,12 +480,12 @@ void destroy_subtrie(struct mb_node *node, struct mm *m, void (*destroy_nhi)(voi
 
     cnt_rules = count_children(node->internal);
     first = POINT(node->child_ptr) - UP_RULE(cnt_rules);
+    int cnt_children = count_children(node->external);
 
     node->internal = 0;
     node->external = 0;
     node->child_ptr = NULL;
 
-    int cnt_children = count_children(node->external);
     free_node(m, first, UP_RULE(cnt_rules) + UP_CHILD(cnt_children), depth);
 }
 
