@@ -60,4 +60,17 @@ void hton_ipv6(struct in6_addr *ip);
 void lshift_ipv6(struct ip_v6 *ip, uint8_t bits);
 void rshift_ipv6(struct ip_v6 *ip, uint8_t bits);
 
+int bitmap_copy_branch_v6(struct mb_node *node, 
+        struct mm *m, 
+        struct ip_v6 ip, int cidr, struct copy_stash *stash);
+int bitmap_insert_prefix_read_copy_v6(struct mb_node *root,
+        struct mm *m, struct ip_v6 ip, int cidr, void *nhi, 
+        struct copy_stash *stash);
+int bitmap_delete_prefix_read_copy_v6(struct mb_node *root, 
+        struct mm *m, struct ip_v6 ip, int cidr, \
+        void (*destroy_nhi)(void *nhi), \
+        struct copy_stash *stash);
+void bitmap_rcu_after_update_v6(struct copy_stash *stash);
+
+
 #endif

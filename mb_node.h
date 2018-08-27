@@ -56,30 +56,18 @@ struct copy_node {
     int level;
 };
 
-#if !defined(LEVEL)
-#define LEVEL MAX_LEVEL
-#define __USE_MAX_LEVEL_DEFINE__ 1
-#else
-#define __USE_MAX_LEVEL_DEFINE__ 0
-#endif
-
 struct rollback_stash 
 {
     int stack;
-    struct mb_node_val val[LEVEL];
+    struct mb_node_val val[MAX_LEVEL];
 };
 
 struct copy_stash
 {
     int stack;
     struct mm *m;
-    struct copy_node nodes[LEVEL];
+    struct copy_node nodes[MAX_LEVEL];
 };
-
-#if __USE_MAX_LEVEL_DEFINE__ 
-#undef LEVEL
-#endif
-
 
 
 static inline int count_ones(BITMAP_TYPE bitmap, uint8_t pos)

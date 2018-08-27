@@ -624,8 +624,6 @@ void ipv4_test_rcu()
      
 }
 
-
-
 void ipv4_test()
 {
     //FILE *fp = fopen("rrc00(2013080808).txt.port","r");
@@ -667,16 +665,24 @@ void test_lookup_valid_v6(struct mb_node *root, FILE *fp)
     ssize_t read = 0;
     size_t len = 0;
 
+    char *slash;
     int r;
     int match = 0;
 
-
     struct in6_addr addr;
+    char ip_v6[INET6_ADDRSTRLEN]; 
     
     while((read = getline(&line, &len, fp)) != -1){
-        line[strlen(line) - 1] = '\0';
-        r = inet_pton(AF_INET6, line, (void *)&addr);
-        if ( r == 0 ){
+        slash = strchr(line, '/');
+        if(slash == NULL) {
+            printf("wrong format line\n");
+            continue;
+        }
+        memcpy(ip_v6, line, slash - line);
+        ip_v6[slash - line] = '\0';
+
+        r = inet_pton(AF_INET6, ip_v6, (void *)&addr);
+        if(r == 0) {
             printf("wrong format\n");
             continue;
         }
@@ -761,9 +767,7 @@ int del_routes_v6(struct mb_node *root, struct mm *m, FILE *fp)
     return 0;    
 }
 
-
-
-int load_routes_v6(struct mb_node *node, struct mm *m, FILE *fp)
+int load_routes_v6(struct mb_node *root, struct mm *m, FILE *fp)
 {
     int i = 0;
     char *line = NULL;
@@ -804,12 +808,150 @@ int load_routes_v6(struct mb_node *node, struct mm *m, FILE *fp)
         prelen[strlen(line) - (slash - line) - 1] ='\0';
         cidr = atoi(prelen);
         
-        bitmapv6_insert_prefix(node, m, ip, cidr, (void *)key);
+        bitmapv6_insert_prefix(root, m, ip, cidr,(void*)(key));
         key ++;
         i++;
     }
     printf("load routes %d\n", i);
     return i ;
+}
+
+
+int load_routes_rcu_v6(struct mb_node **root, struct mm *m, FILE *fp)
+{
+    int i = 0;
+    char *line = NULL;
+    ssize_t read = 0;
+    size_t len = 0;
+   
+    struct ip_v6 ip;
+    uint32_t cidr;
+    uint64_t key = 1;
+    char *slash;
+    
+
+    char ip_v6[INET6_ADDRSTRLEN]; 
+    char prelen[4];
+
+    struct in6_addr addr;
+    int ret;
+    struct copy_stash stash;
+    
+    while((read = getline(&line, &len, fp)) != -1){
+        slash = strchr(line, '/');
+        if(slash == NULL) {
+            printf("wrong format line\n");
+            continue;
+        }
+
+        memcpy(ip_v6, line, slash - line);
+        ip_v6[slash - line] ='\0';
+
+        ret = inet_pton(AF_INET6, ip_v6, (void *)&addr);
+        if (ret == 0) {
+            printf("transform fail\n");
+            continue;
+        }
+        hton_ipv6(&addr);
+        memcpy(&ip, &addr, sizeof(addr));
+
+        memcpy(prelen, slash + 1, strlen(line) - (slash - line) -1);
+        prelen[strlen(line) - (slash - line) - 1] ='\0';
+        cidr = atoi(prelen);
+        
+        bitmap_insert_prefix_read_copy_v6(*root, m, ip, cidr,(void*)(key), &stash);
+        key ++;
+        i++;
+        *root = stash.nodes[0].new_node;
+        bitmap_rcu_after_update_v6(&stash);
+    }
+    printf("RCU load routes %d\n", i);
+    return i ;
+}
+
+int del_routes_rcu_v6(struct mb_node **root, struct mm *m, FILE *fp)
+{
+    struct ip_v6 ip;
+    uint32_t cidr;
+    char *slash;
+    uint32_t i=1;
+
+    char *line = NULL;
+    ssize_t read = 0;
+    size_t len = 0;
+    int r;
+
+    rewind(fp);
+    struct copy_stash stash;
+
+    char ip_v6[INET6_ADDRSTRLEN]; 
+    char prelen[4];
+
+    struct in6_addr addr;
+    
+    while((read = getline(&line, &len, fp)) != -1){
+        slash = strchr(line, '/');
+        if(slash == NULL) {
+            printf("wrong format line\n");
+            continue;
+        }
+
+        memcpy(ip_v6, line, slash - line);
+        ip_v6[slash - line] ='\0';
+
+        r = inet_pton(AF_INET6, ip_v6, (void *)&addr);
+        if ( r == 0 ){
+            printf("wrong format\n");
+            continue;
+        }
+        hton_ipv6(&addr);
+        memcpy(&ip, &addr, sizeof(addr));
+
+        memcpy(prelen, slash + 1, strlen(line) - (slash - line) -1);
+        prelen[strlen(line) - (slash - line) - 1] ='\0';
+        cidr = atoi(prelen);
+
+        void *ret = bitmapv6_do_search(*root, ip);
+        uint64_t key = (uint64_t)ret;
+        if ( key != i) {
+            //printf("overlapped or error %s key %d ret %d\n", line, i, key);
+        }
+
+        r = bitmapv6_prefix_exist(*root, ip, cidr);
+        if( r != 1) {
+            printf("prefix_exist error\n");
+            printf("IP v6 addr: %d %s\n", i, line);
+        }
+        
+        bitmap_delete_prefix_read_copy_v6(*root, m, ip, cidr, NULL, &stash);
+        *root = stash.nodes[0].new_node;
+        bitmap_rcu_after_update_v6(&stash);
+
+        r = bitmapv6_prefix_exist(*root, ip, cidr);
+        if ( r == 1) {
+            printf("prefix_exist error\n");
+        }
+
+        i++;
+    }
+
+    return 0;    
+}
+
+void ipv6_test_rcu()
+{
+    FILE *fp = fopen("ipv6_fib","r");
+    if (fp == NULL)
+        exit(-1);
+    struct mm m;
+    memset(&m, 0, sizeof(m));
+    printf("\nBegin RCU Test: IPv6\n");
+
+    struct mb_node *root = calloc(1, sizeof(struct mb_node));
+    load_routes_rcu_v6(&root, &m, fp);
+    show_mm_stat(&m);
+    del_routes_rcu_v6(&root, &m, fp);
+    show_mm_stat(&m);
 }
 
 void ipv6_test()
@@ -827,6 +969,9 @@ void ipv6_test()
     //bitmapv6_print_all_prefix(&root, print_nhi);
 
     rewind(fp);
+    test_lookup_valid_v6(&root, fp);
+
+    rewind(fp);
     del_routes_v6(&root, &m, fp);
 
     bitmapv6_destroy_trie(&root, &m, NULL);
@@ -840,6 +985,7 @@ int main()
     ipv4_test();
     ipv4_test_rcu();
     ipv6_test();
+    ipv6_test_rcu();
     return 0;
 }
 
